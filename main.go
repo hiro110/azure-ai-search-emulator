@@ -3,8 +3,10 @@ package main
 import (
 	"database/sql"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 
 	"ai-search-emulator/api"
@@ -38,6 +40,8 @@ func setupDB() *sql.DB {
 }
 
 func main() {
+	_ = godotenv.Load()
+
 	db := setupDB()
 	defer db.Close()
 
@@ -55,5 +59,9 @@ func main() {
 	r.Use(api.ApiKeyAuthMiddleware())
 	api.RegisterRoutes(r, appServices)
 
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
 }
