@@ -1,0 +1,16 @@
+# air.toml (最小構成)
+root = "."
+
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go run main.go"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor"]
+
+[color]
+  main = "yellow"
+  watcher = "cyan"
+  build = "green"
+  runner = "magenta"
+  error = "red"

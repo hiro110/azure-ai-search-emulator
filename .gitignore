@@ -1,0 +1,28 @@
+# Go build artifacts
+/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go modules
+vendor/
+
+# Editor/OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Air hot reload
+main
+
+# Logs
+*.log
+
+*.rest
+*.http
+data.db
