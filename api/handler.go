@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 )
@@ -232,15 +233,16 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 }
 
 func ApiKeyAuthMiddleware() gin.HandlerFunc {
+	apiKeyEnv := os.Getenv("API_KEY")
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("api-key")
-		if apiKey == "" {
-			apiKey = c.GetHeader("Api-Key")
-		}
-		if apiKey != "your-api-key" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required or invalid"})
-			return
-		}
-		c.Next()
+        if apiKey == "" {
+            apiKey = c.GetHeader("Api-Key")
+        }
+        if apiKeyEnv == "" || apiKey != apiKeyEnv {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required or invalid"})
+            return
+        }
+        c.Next()
 	}
 }
