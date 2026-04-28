@@ -11,6 +11,7 @@ type Index struct {
 
 type IndexRepository interface {
 	Create(index *Index) error
+	Update(index *Index) error
 	FindByName(name string) (*Index, error)
 	Exists(name string) (bool, error)
 	List() ([]*Index, error)

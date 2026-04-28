@@ -5,11 +5,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 )
+
+func RegisterHealthCheck(r *gin.Engine) {
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+}
 
 func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 	// インデックス作成API
@@ -234,6 +241,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 
 func ApiKeyAuthMiddleware() gin.HandlerFunc {
 	apiKeyEnv := os.Getenv("API_KEY")
+	if apiKeyEnv == "" {
+		log.Println("[WARN] API_KEY is not set — all requests will be rejected")
+	}
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("api-key")
         if apiKey == "" {
