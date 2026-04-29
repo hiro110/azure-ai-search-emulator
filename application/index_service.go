@@ -126,9 +126,8 @@ func (s *IndexService) UpdateIndex(ctx context.Context, name string, body io.Rea
 	if len(tmp.Fields) == 0 {
 		return fmt.Errorf("fields required in schema")
 	}
-	// 上書き保存
 	idx.Schema = string(schemaBytes)
-	return s.Repo.Create(idx) // INSERT OR REPLACE 相当の実装が必要
+	return s.Repo.Update(idx)
 }
 
 func (s *IndexService) DeleteIndex(ctx context.Context, name string) error {

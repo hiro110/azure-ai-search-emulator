@@ -14,8 +14,15 @@ import (
 	"ai-search-emulator/infrastructure"
 )
 
+func dbPath() string {
+	if p := os.Getenv("DB_PATH"); p != "" {
+		return p
+	}
+	return "./data.db"
+}
+
 func setupDB() *sql.DB {
-	db, err := sql.Open("sqlite3", "./data.db")
+	db, err := sql.Open("sqlite3", dbPath())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -56,6 +63,7 @@ func main() {
 	}
 
 	r := gin.Default()
+	api.RegisterHealthCheck(r)
 	r.Use(api.ApiKeyAuthMiddleware())
 	api.RegisterRoutes(r, appServices)
 
@@ -63,5 +71,7 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	r.Run(":" + port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatal(err)
+	}
 }

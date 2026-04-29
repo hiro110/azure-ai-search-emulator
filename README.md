@@ -24,6 +24,8 @@ This project is ideal for local development, testing, and understanding Azure Se
 
 ## How to run
 
+### Local development (with hot reload)
+
 1. Install dependencies:
    ```sh
    go mod tidy
@@ -34,6 +36,55 @@ This project is ideal for local development, testing, and understanding Azure Se
    ```
 3. Access API endpoints at `http://localhost:8080`  
    (Add `api-key: your-api-key` header to your requests)
+
+### Docker (recommended)
+
+**Quick start with Docker Compose:**
+
+```sh
+# Set your API key and start
+API_KEY=your-api-key docker compose up -d
+```
+
+The server will be available at `http://localhost:8080`. Data is persisted in a named Docker volume (`search-data`).
+
+**Build and run manually:**
+
+```sh
+docker build -t azure-ai-search-emulator .
+docker run -d \
+  -p 8080:8080 \
+  -e API_KEY=your-api-key \
+  -e DB_PATH=/data/data.db \
+  -v search-data:/data \
+  azure-ai-search-emulator
+```
+
+**Pull from GitHub Container Registry:**
+
+```sh
+docker pull ghcr.io/<owner>/azure-ai-search-emulator:main
+docker run -d \
+  -p 8080:8080 \
+  -e API_KEY=your-api-key \
+  -v search-data:/data \
+  ghcr.io/<owner>/azure-ai-search-emulator:main
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8080` | Port the server listens on |
+| `DB_PATH` | `./data.db` | Path to the SQLite database file |
+| `API_KEY` | *(required)* | API key for authentication |
+
+### Health check
+
+```sh
+curl http://localhost:8080/healthz
+# {"status":"ok"}
+```
 
 ## Notes
 

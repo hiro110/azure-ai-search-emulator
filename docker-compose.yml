@@ -1,0 +1,21 @@
+services:
+  azure-ai-search-emulator:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - DB_PATH=/data/data.db
+      - API_KEY=${API_KEY}
+    volumes:
+      - search-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  search-data:

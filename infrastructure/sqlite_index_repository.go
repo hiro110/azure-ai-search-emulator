@@ -18,6 +18,21 @@ func (r *SQLiteIndexRepository) Create(index *domain.Index) error {
 	return err
 }
 
+func (r *SQLiteIndexRepository) Update(index *domain.Index) error {
+	result, err := r.db.Exec("UPDATE indexes SET schema = ? WHERE name = ?", index.Schema, index.Name)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrIndexNotFound
+	}
+	return nil
+}
+
 func (r *SQLiteIndexRepository) Exists(name string) (bool, error) {
 	var count int
 	err := r.db.QueryRow("SELECT COUNT(*) FROM indexes WHERE name = ?", name).Scan(&count)
@@ -51,6 +66,16 @@ func (r *SQLiteIndexRepository) List() ([]*domain.Index, error) {
 }
 
 func (r *SQLiteIndexRepository) Delete(name string) error {
-	_, err := r.db.Exec("DELETE FROM indexes WHERE name = ?", name)
-	return err
+	result, err := r.db.Exec("DELETE FROM indexes WHERE name = ?", name)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrIndexNotFound
+	}
+	return nil
 }

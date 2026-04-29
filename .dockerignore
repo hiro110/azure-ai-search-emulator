@@ -1,0 +1,13 @@
+.git
+.gitignore
+.devcontainer
+.env
+*.db
+*.log
+tmp/
+vendor/
+docs/
+air.toml
+README.md
+*.rest
+*.http
