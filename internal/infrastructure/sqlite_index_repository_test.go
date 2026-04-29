@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 )
 
 func TestSQLiteIndexRepository_Create_Success(t *testing.T) {

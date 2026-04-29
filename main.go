@@ -9,9 +9,9 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 
-	"ai-search-emulator/api"
-	"ai-search-emulator/application"
-	"ai-search-emulator/infrastructure"
+	"ai-search-emulator/internal/api"
+	"ai-search-emulator/internal/application"
+	"ai-search-emulator/internal/infrastructure"
 )
 
 func dbPath() string {

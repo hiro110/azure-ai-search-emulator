@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 	"database/sql"
 )
 

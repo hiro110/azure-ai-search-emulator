@@ -14,8 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
-	"ai-search-emulator/application"
-	"ai-search-emulator/infrastructure"
+	"ai-search-emulator/internal/application"
+	"ai-search-emulator/internal/infrastructure"
 )
 
 const apiTestKey = "test-api-key"

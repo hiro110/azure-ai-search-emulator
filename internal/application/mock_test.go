@@ -3,7 +3,7 @@ package application
 import (
 	"sync"
 
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 )
 
 // mockIndexRepository is an in-memory implementation of domain.IndexRepository

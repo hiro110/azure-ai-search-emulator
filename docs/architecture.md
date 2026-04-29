@@ -1,49 +1,61 @@
-# Azure AI Search エミュレータ DDD風アーキテクチャ設計案
+# Architecture
 
-## ディレクトリ構成例
+## Directory Structure
 
 ```
-├── api/                # Ginのルーティング・ハンドラ（インフラ層）
-│   └── handler.go      # HTTPハンドラ群
-├── application/        # ユースケース層（サービス）
-│   └── index_service.go
-│   └── document_service.go
-├── domain/             # ドメイン層（エンティティ・リポジトリインターフェース）
-│   └── index.go        # Indexエンティティ・リポジトリIF
-│   └── document.go     # Documentエンティティ・リポジトリIF
-├── infrastructure/     # インフラ層（DB実装など）
-│   └── sqlite_index_repository.go
-│   └── sqlite_document_repository.go
-├── main.go             # エントリポイント、DI・サーバ起動
-├── docs/               # ドキュメント
-│   └── architecture.md # このファイル
+├── internal/
+│   ├── api/                # Gin routing and HTTP handlers
+│   │   └── handler.go      # All HTTP handler functions
+│   ├── application/        # Use case layer (services)
+│   │   └── index_service.go
+│   │   └── document_service.go
+│   ├── domain/             # Domain layer (entities and repository interfaces)
+│   │   └── index.go        # Index entity, IndexRepository interface, ErrIndexNotFound
+│   │   └── document.go     # Document entity, DocumentRepository interface, ErrDocumentNotFound
+│   └── infrastructure/     # Infrastructure layer (DB implementations)
+│       └── sqlite_index_repository.go
+│       └── sqlite_document_repository.go
+├── main.go             # Entry point: DI wiring and server startup
+├── docs/               # Documentation
+│   └── architecture.md # This file
 ```
 
-## 各層の役割
+Packages under `internal/` are restricted by the Go compiler — they cannot be imported by external modules.
 
-- **api/**
-  - GinのルーティングとHTTPハンドラのみを記述。リクエスト/レスポンスのバリデーションやDTO変換もここ。
-- **application/**
-  - ユースケース（サービス）層。ビジネスロジックのオーケストレーション。リポジトリIF経由で永続化層を呼び出す。
-- **domain/**
-  - ドメインモデル（エンティティ、値オブジェクト）、リポジトリインターフェースを定義。ビジネスルールの中心。
-- **infrastructure/**
-  - DBや外部サービスとのやりとり。リポジトリインターフェースの実装（例: SQLite）。
+## Layer Responsibilities
+
+- **internal/api/**
+  Gin routing and HTTP handlers only. Handles request/response validation and DTO mapping.
+
+- **internal/application/**
+  Use case (service) layer. Orchestrates business logic and calls the persistence layer via repository interfaces.
+
+- **internal/domain/**
+  Domain models (entities, value objects) and repository interfaces. The core of all business rules.
+
+- **internal/infrastructure/**
+  Interaction with databases and external services. Implements the repository interfaces (e.g., SQLite).
+
 - **main.go**
-  - DI（依存性注入）やサーバ起動、ルーティング初期化。
+  Dependency injection, server startup, and route initialization. Contains no business logic.
 
-## 例: Index作成の流れ
+## Dependency Flow
 
-1. `api/handler.go` でHTTPリクエストを受け、DTOを `application/index_service.go` に渡す
-2. `application/index_service.go` でバリデーションや重複チェック等のユースケースロジックを実行
-3. `domain/index.go` のリポジトリIFを通じて `infrastructure/sqlite_index_repository.go` でDB保存
-4. 結果をDTOで返却
+Dependencies flow inward only:
 
-## メリット
-- main.goが極小化され、責務が明確に分離
-- テスト容易・拡張性高
-- DDDの考え方に近い
+```
+api → application → domain ← infrastructure
+```
 
----
+## Example: Creating an Index
 
-ご要望に応じて、各層のサンプルコードや詳細設計もご提案可能です。
+1. `internal/api/handler.go` receives the HTTP request and passes the DTO to `internal/application/index_service.go`
+2. `internal/application/index_service.go` executes use case logic (validation, duplicate check, etc.)
+3. `internal/domain/index.go` repository interface is called, which delegates to `internal/infrastructure/sqlite_index_repository.go` for DB persistence
+4. The result is returned as a response DTO
+
+## Benefits
+
+- `main.go` is minimal; responsibilities are clearly separated across layers
+- Easy to test and extend
+- Aligns with Domain-Driven Design (DDD) principles

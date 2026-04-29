@@ -1,7 +1,7 @@
 package application
 
 import (
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 	"context"
 	"encoding/json"
 	"fmt"
