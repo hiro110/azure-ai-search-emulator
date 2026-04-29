@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -717,6 +718,127 @@ func TestCreateIndex_EchoesRequestBody(t *testing.T) {
 	// Body should be the original schema (compact comparison via field).
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"name": "movies"`)) {
 		t.Errorf("response body should echo input, got %s", rec.Body.String())
+	}
+}
+
+// --- OData metadata ---
+
+func TestListIndexes_ODataContext(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	ctx, ok := body["@odata.context"].(string)
+	if !ok || ctx == "" {
+		t.Fatalf("@odata.context missing or empty, body=%s", rec.Body.String())
+	}
+	if !strings.HasSuffix(ctx, "/$metadata#indexes") {
+		t.Errorf("@odata.context = %q, want suffix '/$metadata#indexes'", ctx)
+	}
+}
+
+func TestSearchDocuments_GET_ODataMetadata(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"id":"1","title":"alpha"}`)
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes/movies/docs?search=alpha", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+
+	ctx, ok := body["@odata.context"].(string)
+	if !ok || ctx == "" {
+		t.Fatalf("@odata.context missing, body=%s", rec.Body.String())
+	}
+	if !strings.Contains(ctx, "/indexes('movies')/$metadata#docs(*)") {
+		t.Errorf("@odata.context = %q, want suffix containing \"/indexes('movies')/$metadata#docs(*)\"", ctx)
+	}
+
+	coverage, ok := body["@search.coverage"].(float64)
+	if !ok || coverage != 100.0 {
+		t.Errorf("@search.coverage = %v, want 100.0", body["@search.coverage"])
+	}
+
+	docs, _ := body["value"].([]interface{})
+	if len(docs) != 1 {
+		t.Fatalf("expected 1 doc, got %d", len(docs))
+	}
+	doc := docs[0].(map[string]interface{})
+	score, ok := doc["@search.score"].(float64)
+	if !ok || score != 1.0 {
+		t.Errorf("@search.score = %v, want 1.0", doc["@search.score"])
+	}
+}
+
+func TestSearchDocuments_GET_ODataCount(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"id":"1","title":"alpha"}`)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"id":"2","title":"beta"}`)
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes/movies/docs?$count=true", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+
+	count, ok := body["@odata.count"].(float64)
+	if !ok || int(count) != 2 {
+		t.Errorf("@odata.count = %v, want 2", body["@odata.count"])
+	}
+}
+
+func TestSearchDocuments_GET_NextLink(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	for i := 1; i <= 5; i++ {
+		doRequest(t, r, http.MethodPost, "/indexes/movies/docs",
+			fmt.Sprintf(`{"id":"%d","title":"doc%d"}`, i, i))
+	}
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes/movies/docs?$top=2&$skip=0", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+
+	nextLink, ok := body["@odata.nextLink"].(string)
+	if !ok || nextLink == "" {
+		t.Fatalf("@odata.nextLink missing, body=%s", rec.Body.String())
+	}
+	if !strings.Contains(nextLink, "$skip=2") {
+		t.Errorf("@odata.nextLink = %q, expected $skip=2", nextLink)
+	}
+	if !strings.Contains(nextLink, "$top=2") {
+		t.Errorf("@odata.nextLink = %q, expected $top=2", nextLink)
+	}
+}
+
+func TestSearchDocuments_GET_NoNextLinkOnLastPage(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"id":"1","title":"a"}`)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"id":"2","title":"b"}`)
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes/movies/docs?$top=10", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+
+	if _, ok := body["@odata.nextLink"]; ok {
+		t.Errorf("@odata.nextLink should be absent when all docs fit on one page, body=%s", rec.Body.String())
 	}
 }
 
