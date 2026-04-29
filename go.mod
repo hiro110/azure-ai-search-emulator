@@ -1,6 +1,6 @@
 module ai-search-emulator
 
-go 1.22.12
+go 1.26
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
