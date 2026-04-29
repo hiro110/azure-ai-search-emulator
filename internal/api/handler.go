@@ -2,8 +2,10 @@ package api
 
 import (
 	"ai-search-emulator/internal/application"
+	"ai-search-emulator/internal/domain"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -38,7 +40,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		err = app.IndexService.CreateIndex(c.Request.Context(), req.Name, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
-			if err.Error() == "already exists" {
+			if errors.Is(err, domain.ErrIndexAlreadyExists) {
 				c.JSON(http.StatusConflict, gin.H{"error": "Index already exists"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -57,9 +59,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		err := app.DocumentService.AddOrUpdateSingleDoc(c.Request.Context(), indexName, doc)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
-			} else if err.Error() == "missing key field" {
+			} else if errors.Is(err, domain.ErrMissingKeyField) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Document missing key field"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -84,7 +86,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		idx, err := app.IndexService.GetIndex(c.Request.Context(), indexName)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -127,7 +129,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		err := app.IndexService.DeleteIndex(c.Request.Context(), indexName)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -141,7 +143,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		stats, err := app.IndexService.GetIndexStats(c.Request.Context(), indexName)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -162,7 +164,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		results, err := app.DocumentService.BatchOperation(c.Request.Context(), indexName, req.Value)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -177,9 +179,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		key := c.Param("key")
 		doc, err := app.DocumentService.GetDocument(c.Request.Context(), indexName, key)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
-			} else if err.Error() == "document not found" {
+			} else if errors.Is(err, domain.ErrDocumentNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -193,7 +195,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		count, err := app.DocumentService.CountDocuments(c.Request.Context(), indexName)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -208,7 +210,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		search := c.Query("search")
 		results, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, search)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -228,7 +230,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		results, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, req.Search)
 		if err != nil {
-			if err.Error() == "index not found" {
+			if errors.Is(err, domain.ErrIndexNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
 			} else {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
