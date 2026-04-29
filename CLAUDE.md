@@ -42,17 +42,18 @@ The project uses Domain-Driven Design (DDD) with four strict layers. Dependencie
 
 ```
 main.go                     # DI wiring + server startup (no logic)
-api/handler.go              # Gin routes + HTTP handlers
-application/
-  index_service.go          # Business logic for index CRUD
-  document_service.go       # Business logic for document CRUD + search
-  app_services.go           # Service container (aggregates services)
-domain/
-  index.go                  # Index entity + IndexRepository interface + ErrIndexNotFound
-  document.go               # Document entity + DocumentRepository interface + ErrDocumentNotFound
-infrastructure/
-  sqlite_index_repository.go     # Implements IndexRepository via SQLite
-  sqlite_document_repository.go  # Implements DocumentRepository via SQLite
+internal/
+  api/handler.go              # Gin routes + HTTP handlers
+  application/
+    index_service.go          # Business logic for index CRUD
+    document_service.go       # Business logic for document CRUD + search
+    app_services.go           # Service container (aggregates services)
+  domain/
+    index.go                  # Index entity + IndexRepository interface + ErrIndexNotFound
+    document.go               # Document entity + DocumentRepository interface + ErrDocumentNotFound
+  infrastructure/
+    sqlite_index_repository.go     # Implements IndexRepository via SQLite
+    sqlite_document_repository.go  # Implements DocumentRepository via SQLite
 ```
 
 **Data storage model:** Both the index schema and document content are stored as raw JSON strings in SQLite — no column normalization. Only specific fields (e.g., the key field name) are parsed on demand.
@@ -63,7 +64,7 @@ infrastructure/
 
 ## Key Patterns
 
-**Adding a new endpoint:** Add the route + handler in `api/handler.go`, add the business method to the relevant service in `application/`, add any new repository methods to the interface in `domain/` and implement in `infrastructure/`.
+**Adding a new endpoint:** Add the route + handler in `internal/api/handler.go`, add the business method to the relevant service in `internal/application/`, add any new repository methods to the interface in `internal/domain/` and implement in `internal/infrastructure/`.
 
 **Error handling convention:** Domain errors (`ErrIndexNotFound`, `ErrDocumentNotFound`) are returned from services and converted to HTTP 404 in handlers. Validation errors return 400, conflicts return 409.
 
