@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -71,7 +73,29 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	if err := r.Run(":" + port); err != nil {
+	handler := api.ODataPathRewriter(r)
+
+	// Start optional TLS listener for SDKs that require HTTPS (e.g. Azure.Search.Documents for C#).
+	// Uses a self-signed certificate generated at startup — for local development only.
+	if tlsPort := os.Getenv("TLS_PORT"); tlsPort != "" {
+		cert, err := api.GenerateSelfSignedCert()
+		if err != nil {
+			log.Fatal("failed to generate TLS cert: ", err)
+		}
+		tlsServer := &http.Server{
+			Addr:      ":" + tlsPort,
+			Handler:   handler,
+			TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}},
+		}
+		go func() {
+			log.Printf("TLS server listening on :%s (self-signed cert)\n", tlsPort)
+			if err := tlsServer.ListenAndServeTLS("", ""); err != nil {
+				log.Fatal(err)
+			}
+		}()
+	}
+
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
 }

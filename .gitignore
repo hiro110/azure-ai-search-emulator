@@ -27,3 +27,14 @@ main
 *.http
 data.db
 .env
+
+**/node_modules/
+# Python virtual environments
+.venv/
+
+# .NET build outputs
+bin/
+obj/
+
+# npm lockfile (let users use their own)
+package-lock.json
