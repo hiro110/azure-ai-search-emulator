@@ -288,11 +288,11 @@ func TestUpdateIndex_Success(t *testing.T) {
 	}
 }
 
-func TestUpdateIndex_NotFound(t *testing.T) {
+func TestUpdateIndex_CreatesWhenNotFound(t *testing.T) {
 	r := setupRouter(t)
 	rec := doRequest(t, r, http.MethodPut, "/indexes/missing", apiTestSchema)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", rec.Code)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want 201 (PUT creates when index absent)", rec.Code)
 	}
 }
 

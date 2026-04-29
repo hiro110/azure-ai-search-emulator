@@ -8,14 +8,16 @@
  *   SEARCH_API_KEY   - API key configured via the emulator's API_KEY env var
  */
 
-import { SearchClient, SearchIndexClient, AzureKeyCredential } from "@azure/search-documents";
+import { SearchClient, SearchIndexClient, AzureKeyCredential, IndexDocumentsBatch } from "@azure/search-documents";
 
 const ENDPOINT = process.env.SEARCH_ENDPOINT ?? "http://localhost:8080";
 const API_KEY = process.env.SEARCH_API_KEY ?? "dev-api-key";
 const INDEX_NAME = "hotels";
 
+// allowInsecureConnection is required for http:// (non-TLS) endpoints.
 const credential = new AzureKeyCredential(API_KEY);
-const indexClient = new SearchIndexClient(ENDPOINT, credential);
+const clientOptions = { allowInsecureConnection: true };
+const indexClient = new SearchIndexClient(ENDPOINT, credential, clientOptions);
 
 async function createIndex() {
   const index = {
@@ -53,7 +55,7 @@ async function getIndexStats() {
 }
 
 async function uploadDocuments() {
-  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential);
+  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential, clientOptions);
   const documents = [
     {
       hotelId: "1",
@@ -83,19 +85,19 @@ async function uploadDocuments() {
 }
 
 async function getDocument() {
-  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential);
+  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential, clientOptions);
   const doc = await client.getDocument("1");
   console.log(`[getDocument] hotelId=${doc.hotelId}, hotelName=${doc.hotelName}`);
 }
 
 async function getDocumentCount() {
-  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential);
+  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential, clientOptions);
   const count = await client.getDocumentsCount();
   console.log(`[getDocumentCount] Count=${count}`);
 }
 
 async function searchDocuments(query = "*") {
-  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential);
+  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential, clientOptions);
   const results = await client.search(query);
   const docs = [];
   for await (const result of results.results) {
@@ -108,15 +110,14 @@ async function searchDocuments(query = "*") {
 }
 
 async function batchOperations() {
-  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential);
-  const batch = [
-    { "@search.action": "upload", hotelId: "4", hotelName: "Mountain Lodge Hokkaido", rating: 4.2 },
-    { "@search.action": "mergeOrUpload", hotelId: "2", hotelName: "Budget Inn Osaka", rating: 3.8 },
-    { "@search.action": "delete", hotelId: "3" },
-  ];
+  const client = new SearchClient(ENDPOINT, INDEX_NAME, credential, clientOptions);
+  const batch = new IndexDocumentsBatch();
+  batch.upload([{ hotelId: "4", hotelName: "Mountain Lodge Hokkaido", rating: 4.2 }]);
+  batch.mergeOrUpload([{ hotelId: "2", hotelName: "Budget Inn Osaka", rating: 3.8 }]);
+  batch.delete([{ hotelId: "3" }]);
   const result = await client.indexDocuments(batch);
   const succeeded = result.results.filter((r) => r.succeeded).length;
-  console.log(`[batchOperations] Processed ${succeeded}/${batch.length} actions`);
+  console.log(`[batchOperations] Processed ${succeeded}/${batch.actions.length} actions`);
 }
 
 async function deleteIndex() {

@@ -93,7 +93,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		c.JSON(http.StatusOK, idx)
 	})
-	// インデックス更新API
+	// インデックス更新API（create-or-update）
 	r.PUT("/indexes/:index", func(c *gin.Context) {
 		indexName := c.Param("index")
 		body, err := io.ReadAll(c.Request.Body)
@@ -102,8 +102,8 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			return
 		}
 		var req struct {
-			Name      string      `json:"name" binding:"required"`
-			Fields    interface{} `json:"fields" binding:"required"`
+			Name       string      `json:"name" binding:"required"`
+			Fields     interface{} `json:"fields" binding:"required"`
 			Suggesters interface{} `json:"suggesters,omitempty"`
 			Analyzers  interface{} `json:"analyzers,omitempty"`
 		}
@@ -111,16 +111,16 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 			return
 		}
-		err = app.IndexService.UpdateIndex(c.Request.Context(), indexName, io.NopCloser(bytes.NewReader(body)))
+		created, err := app.IndexService.CreateOrUpdateIndex(c.Request.Context(), indexName, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
-			if err.Error() == "index not found" {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.Data(http.StatusOK, "application/json", body)
+		if created {
+			c.Data(http.StatusCreated, "application/json", body)
+		} else {
+			c.Data(http.StatusOK, "application/json", body)
+		}
 	})
 	// インデックス削除API
 	r.DELETE("/indexes/:index", func(c *gin.Context) {

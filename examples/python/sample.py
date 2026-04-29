@@ -9,17 +9,19 @@ Environment variables:
 """
 
 import os
+import azure.search.documents.indexes._search_index_client as _idx_client_mod
 from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient
+from azure.search.documents import SearchClient, IndexDocumentsBatch
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchIndex,
-    SearchField,
     SearchFieldDataType,
     SimpleField,
     SearchableField,
 )
-from azure.search.documents.models import IndexDocumentsBatch
+
+# SDK rejects http:// endpoints; patch required for the local emulator (non-TLS).
+_idx_client_mod.normalize_endpoint = lambda ep: ep.rstrip("/")
 
 ENDPOINT = os.environ.get("SEARCH_ENDPOINT", "http://localhost:8080")
 API_KEY = os.environ.get("SEARCH_API_KEY", "dev-api-key")
@@ -60,7 +62,7 @@ def get_index() -> None:
 def get_index_stats() -> None:
     stats = index_client.get_index_statistics(INDEX_NAME)
     print(
-        f"[get_index_stats] DocumentCount={stats.document_count}, StorageSize={stats.storage_size}"
+        f"[get_index_stats] DocumentCount={stats['document_count']}, StorageSize={stats['storage_size']}"
     )
 
 

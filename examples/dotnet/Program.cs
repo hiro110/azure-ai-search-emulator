@@ -2,22 +2,38 @@
 //
 // Demonstrates all emulator API endpoints using the official Azure.Search.Documents SDK.
 //
+// The Azure.Search.Documents SDK requires an HTTPS endpoint. Start the emulator with
+// TLS_PORT=8443 to enable the self-signed HTTPS listener, then point this sample at it.
+//
 // Environment variables:
-//   SEARCH_ENDPOINT  - Emulator base URL, e.g. http://localhost:8080
+//   SEARCH_ENDPOINT  - Emulator HTTPS URL, e.g. https://localhost:8443
 //   SEARCH_API_KEY   - API key configured via the emulator's API_KEY env var
 
+using System.Net.Http;
+using System.Net.Security;
 using Azure;
+using Azure.Core.Pipeline;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 
-var endpoint = new Uri(Environment.GetEnvironmentVariable("SEARCH_ENDPOINT") ?? "http://localhost:8080");
+var endpoint = new Uri(Environment.GetEnvironmentVariable("SEARCH_ENDPOINT") ?? "https://localhost:8443");
 var apiKey = Environment.GetEnvironmentVariable("SEARCH_API_KEY") ?? "dev-api-key";
 const string IndexName = "hotels";
 
+// Bypass self-signed certificate validation for the local emulator.
+var handler = new HttpClientHandler
+{
+    ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+};
+var options = new SearchClientOptions
+{
+    Transport = new HttpClientTransport(handler)
+};
+
 var credential = new AzureKeyCredential(apiKey);
-var indexClient = new SearchIndexClient(endpoint, credential);
+var indexClient = new SearchIndexClient(endpoint, credential, options);
 
 await CreateIndexAsync();
 await ListIndexesAsync();
@@ -66,7 +82,7 @@ async Task GetIndexStatsAsync()
 
 async Task UploadDocumentsAsync()
 {
-    var client = new SearchClient(endpoint, IndexName, credential);
+    var client = new SearchClient(endpoint, IndexName, credential, options);
     var documents = new[]
     {
         new Hotel { HotelId = "1", HotelName = "Grand Tokyo Hotel", Description = "A luxury hotel in the heart of Tokyo.", Category = "Luxury", Rating = 4.8 },
@@ -80,21 +96,21 @@ async Task UploadDocumentsAsync()
 
 async Task GetDocumentAsync()
 {
-    var client = new SearchClient(endpoint, IndexName, credential);
+    var client = new SearchClient(endpoint, IndexName, credential, options);
     var doc = await client.GetDocumentAsync<Hotel>("1");
     Console.WriteLine($"[GetDocument] HotelId={doc.Value.HotelId}, HotelName={doc.Value.HotelName}");
 }
 
 async Task GetDocumentCountAsync()
 {
-    var client = new SearchClient(endpoint, IndexName, credential);
+    var client = new SearchClient(endpoint, IndexName, credential, options);
     var count = await client.GetDocumentCountAsync();
     Console.WriteLine($"[GetDocumentCount] Count={count.Value}");
 }
 
 async Task SearchDocumentsAsync(string query)
 {
-    var client = new SearchClient(endpoint, IndexName, credential);
+    var client = new SearchClient(endpoint, IndexName, credential, options);
     var results = await client.SearchAsync<Hotel>(query);
     var docs = new List<Hotel>();
     await foreach (var result in results.Value.GetResultsAsync())
@@ -110,7 +126,7 @@ async Task SearchDocumentsAsync(string query)
 
 async Task BatchOperationsAsync()
 {
-    var client = new SearchClient(endpoint, IndexName, credential);
+    var client = new SearchClient(endpoint, IndexName, credential, options);
     var batch = IndexDocumentsBatch.Create(
         IndexDocumentsAction.Upload(new Hotel { HotelId = "4", HotelName = "Mountain Lodge Hokkaido", Rating = 4.2 }),
         IndexDocumentsAction.MergeOrUpload(new Hotel { HotelId = "2", HotelName = "Budget Inn Osaka", Rating = 3.8 }),
