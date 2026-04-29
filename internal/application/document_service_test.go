@@ -207,8 +207,8 @@ func TestDocumentService_BatchOperation_MergeMissingDoc(t *testing.T) {
 	if results[0]["status"] != false {
 		t.Errorf("expected failure for missing doc merge, got %v", results[0])
 	}
-	if results[0]["error"] != "Not found for merge" {
-		t.Errorf("unexpected error message: %v", results[0]["error"])
+	if results[0]["errorMessage"] != "Document not found for merge" {
+		t.Errorf("unexpected error message: %v", results[0]["errorMessage"])
 	}
 }
 
@@ -244,7 +244,7 @@ func TestDocumentService_BatchOperation_MissingAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0]["status"] != false || results[0]["error"] != "Missing @search.action" {
+	if results[0]["status"] != false || results[0]["errorMessage"] != "Missing @search.action" {
 		t.Errorf("unexpected result: %v", results[0])
 	}
 }
@@ -260,7 +260,7 @@ func TestDocumentService_BatchOperation_MissingKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0]["status"] != false || results[0]["error"] != "Missing key field" {
+	if results[0]["status"] != false || results[0]["errorMessage"] != "Missing key field" {
 		t.Errorf("unexpected result: %v", results[0])
 	}
 }
@@ -276,7 +276,7 @@ func TestDocumentService_BatchOperation_NonStringKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0]["error"] != "Key field must be string" {
+	if results[0]["errorMessage"] != "Key field must be a string" {
 		t.Errorf("unexpected result: %v", results[0])
 	}
 }
@@ -292,7 +292,7 @@ func TestDocumentService_BatchOperation_UnknownAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0]["error"] != "Unknown action" {
+	if results[0]["errorMessage"] != "Unknown action: frobnicate" {
 		t.Errorf("expected unknown action error, got %v", results[0])
 	}
 }

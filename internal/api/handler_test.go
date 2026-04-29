@@ -414,6 +414,99 @@ func TestBatchOperation_Success(t *testing.T) {
 		if v["status"] != true {
 			t.Errorf("expected status=true, got %v", v)
 		}
+		if v["statusCode"] != float64(201) {
+			t.Errorf("expected statusCode=201, got %v", v["statusCode"])
+		}
+	}
+}
+
+func TestBatchOperation_PartialFailureReturns207(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+
+	// upload one doc first so merge on "1" can succeed
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index",
+		`{"value":[{"@search.action":"upload","id":"1","title":"a"}]}`)
+
+	batch := `{"value":[
+		{"@search.action":"merge","id":"1","title":"updated"},
+		{"@search.action":"merge","id":"nonexistent","title":"x"}
+	]}`
+	rec := doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index", batch)
+	if rec.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207", rec.Code)
+	}
+	var body struct {
+		Value []map[string]interface{} `json:"value"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if len(body.Value) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(body.Value))
+	}
+	// first item succeeded
+	if body.Value[0]["status"] != true {
+		t.Errorf("result[0].status = %v, want true", body.Value[0]["status"])
+	}
+	if body.Value[0]["statusCode"] != float64(200) {
+		t.Errorf("result[0].statusCode = %v, want 200", body.Value[0]["statusCode"])
+	}
+	// second item failed
+	if body.Value[1]["status"] != false {
+		t.Errorf("result[1].status = %v, want false", body.Value[1]["status"])
+	}
+	if body.Value[1]["statusCode"] != float64(404) {
+		t.Errorf("result[1].statusCode = %v, want 404", body.Value[1]["statusCode"])
+	}
+	if body.Value[1]["errorMessage"] == nil {
+		t.Errorf("result[1].errorMessage should be set")
+	}
+}
+
+func TestBatchOperation_MergeOrUploadReturnsCorrectStatusCodes(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index",
+		`{"value":[{"@search.action":"upload","id":"1","title":"a"}]}`)
+
+	batch := `{"value":[
+		{"@search.action":"mergeOrUpload","id":"1","title":"updated"},
+		{"@search.action":"mergeOrUpload","id":"2","title":"new"}
+	]}`
+	rec := doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index", batch)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Value []map[string]interface{} `json:"value"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	// existing doc updated → 200
+	if body.Value[0]["statusCode"] != float64(200) {
+		t.Errorf("result[0].statusCode = %v, want 200 (updated)", body.Value[0]["statusCode"])
+	}
+	// new doc created → 201
+	if body.Value[1]["statusCode"] != float64(201) {
+		t.Errorf("result[1].statusCode = %v, want 201 (created)", body.Value[1]["statusCode"])
+	}
+}
+
+func TestBatchOperation_DeleteReturns200StatusCode(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index",
+		`{"value":[{"@search.action":"upload","id":"1","title":"a"}]}`)
+
+	rec := doRequest(t, r, http.MethodPost, "/indexes/movies/docs/index",
+		`{"value":[{"@search.action":"delete","id":"1"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Value []map[string]interface{} `json:"value"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body.Value[0]["statusCode"] != float64(200) {
+		t.Errorf("result[0].statusCode = %v, want 200", body.Value[0]["statusCode"])
 	}
 }
 
