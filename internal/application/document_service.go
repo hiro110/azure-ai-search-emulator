@@ -26,7 +26,7 @@ func (s *DocumentService) AddOrUpdateSingleDoc(ctx context.Context, indexName st
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("index not found")
+		return domain.ErrIndexNotFound
 	}
 	// キーフィールド名を取得
 	idx, err := s.IdxRepo.FindByName(indexName)
@@ -50,11 +50,11 @@ func (s *DocumentService) AddOrUpdateSingleDoc(ctx context.Context, indexName st
 		}
 	}
 	if keyField == "" {
-		return fmt.Errorf("missing key field")
+		return domain.ErrMissingKeyField
 	}
 	keyVal, ok := doc[keyField]
 	if !ok {
-		return fmt.Errorf("missing key field")
+		return domain.ErrMissingKeyField
 	}
 	keyStr, ok := keyVal.(string)
 	if !ok {
@@ -74,7 +74,7 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("index not found")
+		return nil, domain.ErrIndexNotFound
 	}
 	idx, err := s.IdxRepo.FindByName(indexName)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 		}
 	}
 	if keyField == "" {
-		return nil, fmt.Errorf("missing key field")
+		return nil, domain.ErrMissingKeyField
 	}
 
 	results := make([]map[string]interface{}, 0, len(docs))
@@ -198,7 +198,7 @@ func (s *DocumentService) SearchDocuments(ctx context.Context, indexName string,
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("index not found")
+		return nil, domain.ErrIndexNotFound
 	}
 	docs, err := s.DocRepo.List(indexName)
 	if err != nil {
@@ -233,13 +233,10 @@ func (s *DocumentService) GetDocument(ctx context.Context, indexName, key string
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("index not found")
+		return nil, domain.ErrIndexNotFound
 	}
 	doc, err := s.DocRepo.Find(indexName, key)
 	if err != nil {
-		if err == domain.ErrDocumentNotFound {
-			return nil, fmt.Errorf("document not found")
-		}
 		return nil, err
 	}
 	var m map[string]interface{}
@@ -255,7 +252,7 @@ func (s *DocumentService) CountDocuments(ctx context.Context, indexName string) 
 		return 0, err
 	}
 	if !exists {
-		return 0, fmt.Errorf("index not found")
+		return 0, domain.ErrIndexNotFound
 	}
 	return s.DocRepo.Count(indexName)
 }

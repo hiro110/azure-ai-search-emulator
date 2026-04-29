@@ -27,7 +27,7 @@ func (s *IndexService) CreateIndex(ctx context.Context, name string, body io.Rea
 		return err
 	}
 	if exists {
-		return fmt.Errorf("already exists")
+		return domain.ErrIndexAlreadyExists
 	}
 
 	// bodyからスキーマJSONを読み込む
@@ -90,9 +90,6 @@ func (s *IndexService) ListIndexes(ctx context.Context, selectFields string) ([]
 func (s *IndexService) GetIndex(ctx context.Context, name string) (map[string]interface{}, error) {
 	idx, err := s.Repo.FindByName(name)
 	if err != nil {
-		if err == domain.ErrIndexNotFound {
-			return nil, fmt.Errorf("index not found")
-		}
 		return nil, err
 	}
 	var schema map[string]interface{}
@@ -139,9 +136,6 @@ func (s *IndexService) UpdateIndex(ctx context.Context, name string, body io.Rea
 	defer body.Close()
 	idx, err := s.Repo.FindByName(name)
 	if err != nil {
-		if err == domain.ErrIndexNotFound {
-			return fmt.Errorf("index not found")
-		}
 		return err
 	}
 	schemaBytes, err := io.ReadAll(body)
@@ -163,23 +157,12 @@ func (s *IndexService) UpdateIndex(ctx context.Context, name string, body io.Rea
 }
 
 func (s *IndexService) DeleteIndex(ctx context.Context, name string) error {
-	err := s.Repo.Delete(name)
-	if err != nil {
-		if err == domain.ErrIndexNotFound {
-			return fmt.Errorf("index not found")
-		}
-		return err
-	}
-	return nil
+	return s.Repo.Delete(name)
 }
 
 func (s *IndexService) GetIndexStats(ctx context.Context, name string) (map[string]interface{}, error) {
-	// インデックス存在チェック
 	_, err := s.Repo.FindByName(name)
 	if err != nil {
-		if err == domain.ErrIndexNotFound {
-			return nil, fmt.Errorf("index not found")
-		}
 		return nil, err
 	}
 	// ドキュメント件数取得

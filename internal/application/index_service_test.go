@@ -56,8 +56,8 @@ func TestIndexService_CreateIndex_AlreadyExists(t *testing.T) {
 	_ = idxRepo.Create(&domain.Index{Name: "my-index", Schema: validSchemaJSON})
 
 	err := svc.CreateIndex(context.Background(), "my-index", body(validSchemaJSON))
-	if err == nil || err.Error() != "already exists" {
-		t.Fatalf("expected 'already exists' error, got %v", err)
+	if !errors.Is(err, domain.ErrIndexAlreadyExists) {
+		t.Fatalf("expected ErrIndexAlreadyExists, got %v", err)
 	}
 }
 
@@ -245,7 +245,7 @@ func TestIndexService_GetIndex_RepoError(t *testing.T) {
 	svc, idxRepo, _ := newIndexServiceForTest()
 	idxRepo.findErr = errors.New("boom")
 	_, err := svc.GetIndex(context.Background(), "x")
-	if err == nil || err.Error() == "index not found" {
+	if err == nil || errors.Is(err, domain.ErrIndexNotFound) {
 		t.Fatalf("expected raw repo error to bubble up, got %v", err)
 	}
 }
@@ -323,7 +323,7 @@ func TestIndexService_DeleteIndex_RepoError(t *testing.T) {
 	svc, idxRepo, _ := newIndexServiceForTest()
 	idxRepo.deleteErr = errors.New("db error")
 	err := svc.DeleteIndex(context.Background(), "anything")
-	if err == nil || err.Error() == "index not found" {
+	if err == nil || errors.Is(err, domain.ErrIndexNotFound) {
 		t.Fatalf("expected db error to bubble up, got %v", err)
 	}
 }

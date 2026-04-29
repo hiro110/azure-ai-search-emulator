@@ -3,6 +3,7 @@ package domain
 import "errors"
 
 var ErrIndexNotFound = errors.New("index not found")
+var ErrIndexAlreadyExists = errors.New("index already exists")
 
 type Index struct {
 	Name   string
