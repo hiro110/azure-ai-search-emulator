@@ -169,7 +169,14 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			}
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"value": results})
+		statusCode := http.StatusOK
+		for _, r := range results {
+			if status, ok := r["status"].(bool); ok && !status {
+				statusCode = http.StatusMultiStatus
+				break
+			}
+		}
+		c.JSON(statusCode, gin.H{"value": results})
 	})
 	// ドキュメント取得API
 	r.GET("/indexes/:index/docs/:key", func(c *gin.Context) {

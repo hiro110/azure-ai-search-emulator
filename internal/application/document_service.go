@@ -4,7 +4,9 @@ import (
 	"ai-search-emulator/internal/domain"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -74,7 +76,6 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 	if !exists {
 		return nil, fmt.Errorf("index not found")
 	}
-	// キーフィールド名を取得
 	idx, err := s.IdxRepo.FindByName(indexName)
 	if err != nil {
 		return nil, err
@@ -98,32 +99,51 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 	if keyField == "" {
 		return nil, fmt.Errorf("missing key field")
 	}
+
 	results := make([]map[string]interface{}, 0, len(docs))
 	for _, d := range docs {
 		action, ok := d["@search.action"].(string)
 		if !ok {
-			results = append(results, map[string]interface{}{"status": false, "error": "Missing @search.action"})
+			results = append(results, batchError("", http.StatusBadRequest, "Missing @search.action"))
 			continue
 		}
 		keyVal, ok := d[keyField]
 		if !ok {
-			results = append(results, map[string]interface{}{"status": false, "error": "Missing key field"})
+			results = append(results, batchError("", http.StatusBadRequest, "Missing key field"))
 			continue
 		}
 		keyStr, ok := keyVal.(string)
 		if !ok {
-			results = append(results, map[string]interface{}{"status": false, "error": "Key field must be string"})
+			results = append(results, batchError("", http.StatusBadRequest, "Key field must be a string"))
 			continue
 		}
 		docJSON, _ := json.Marshal(d)
+
 		switch action {
-		case "upload", "mergeOrUpload":
-			err = s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(docJSON)})
-			results = append(results, map[string]interface{}{"key": keyStr, "status": err == nil})
+		case "upload":
+			_, findErr := s.DocRepo.Find(indexName, keyStr)
+			isNew := errors.Is(findErr, domain.ErrDocumentNotFound)
+			if err := s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(docJSON)}); err != nil {
+				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
+			} else if isNew {
+				results = append(results, batchSuccess(keyStr, http.StatusCreated))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
+			}
+		case "mergeOrUpload":
+			_, findErr := s.DocRepo.Find(indexName, keyStr)
+			isNew := errors.Is(findErr, domain.ErrDocumentNotFound)
+			if err := s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(docJSON)}); err != nil {
+				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
+			} else if isNew {
+				results = append(results, batchSuccess(keyStr, http.StatusCreated))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
+			}
 		case "merge":
 			old, err := s.DocRepo.Find(indexName, keyStr)
 			if err != nil {
-				results = append(results, map[string]interface{}{"key": keyStr, "status": false, "error": "Not found for merge"})
+				results = append(results, batchError(keyStr, http.StatusNotFound, "Document not found for merge"))
 				continue
 			}
 			var oldDoc map[string]interface{}
@@ -134,16 +154,42 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 				}
 			}
 			mergedJSON, _ := json.Marshal(oldDoc)
-			err = s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(mergedJSON)})
-			results = append(results, map[string]interface{}{"key": keyStr, "status": err == nil})
+			if err := s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(mergedJSON)}); err != nil {
+				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
+			}
 		case "delete":
-			err = s.DocRepo.Delete(indexName, keyStr)
-			results = append(results, map[string]interface{}{"key": keyStr, "status": err == nil})
+			if err := s.DocRepo.Delete(indexName, keyStr); err != nil {
+				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
+			}
 		default:
-			results = append(results, map[string]interface{}{"key": keyStr, "status": false, "error": "Unknown action"})
+			results = append(results, batchError(keyStr, http.StatusBadRequest, "Unknown action: "+action))
 		}
 	}
 	return results, nil
+}
+
+func batchSuccess(key string, statusCode int) map[string]interface{} {
+	return map[string]interface{}{
+		"key":        key,
+		"status":     true,
+		"statusCode": statusCode,
+	}
+}
+
+func batchError(key string, statusCode int, message string) map[string]interface{} {
+	r := map[string]interface{}{
+		"status":       false,
+		"statusCode":   statusCode,
+		"errorMessage": message,
+	}
+	if key != "" {
+		r["key"] = key
+	}
+	return r
 }
 
 func (s *DocumentService) SearchDocuments(ctx context.Context, indexName string, search string) ([]map[string]interface{}, error) {
