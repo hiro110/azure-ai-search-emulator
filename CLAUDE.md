@@ -38,29 +38,9 @@ mise exec -- go mod tidy
 
 ## Architecture
 
-The project uses Domain-Driven Design (DDD) with four strict layers. Dependencies flow inward only: `api → application → domain ← infrastructure`.
+See [docs/architecture.md](docs/architecture.md) for the full architecture description including directory structure, layer responsibilities, and data flow.
 
-```
-main.go                     # DI wiring + server startup (no logic)
-internal/
-  api/handler.go              # Gin routes + HTTP handlers
-  application/
-    index_service.go          # Business logic for index CRUD
-    document_service.go       # Business logic for document CRUD + search
-    app_services.go           # Service container (aggregates services)
-  domain/
-    index.go                  # Index entity + IndexRepository interface + ErrIndexNotFound
-    document.go               # Document entity + DocumentRepository interface + ErrDocumentNotFound
-  infrastructure/
-    sqlite_index_repository.go     # Implements IndexRepository via SQLite
-    sqlite_document_repository.go  # Implements DocumentRepository via SQLite
-```
-
-**Data storage model:** Both the index schema and document content are stored as raw JSON strings in SQLite — no column normalization. Only specific fields (e.g., the key field name) are parsed on demand.
-
-**Full-text search implementation:** Case-insensitive substring matching on the document content JSON string. No ranking or field-specific queries.
-
-**Batch operations:** The `/docs/index` endpoint supports Azure-style actions (`upload`, `merge`, `mergeOrUpload`, `delete`). `merge` performs a deep merge of JSON fields. Batch operations are NOT transactional — each document result is independent.
+Summary: DDD with four strict layers. Dependencies flow inward only: `api → application → domain ← infrastructure`. All packages live under `internal/`.
 
 ## Key Patterns
 
