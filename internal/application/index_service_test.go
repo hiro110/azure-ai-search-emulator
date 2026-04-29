@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 )
 
 // helper: returns an io.ReadCloser around a string body.

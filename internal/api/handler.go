@@ -1,7 +1,7 @@
 package api
 
 import (
-	"ai-search-emulator/application"
+	"ai-search-emulator/internal/application"
 	"bytes"
 	"encoding/json"
 	"io"

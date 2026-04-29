@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 )
 
 // seedTestIndex inserts an index row so foreign key constraints (if enabled)

@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"ai-search-emulator/domain"
+	"ai-search-emulator/internal/domain"
 )
 
 type IndexService struct {
