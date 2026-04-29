@@ -97,3 +97,9 @@ The Docker image uses a multi-stage build (CGO enabled for SQLite). The runtime 
 ## development flow
 - Pushing to the `main` branch is prohibited
 - When making changes to the code, be sure to create a branch from the `main` branch, commit the changes, push them, and then create a pull request.
+- The naming convention for branch names is as follows:
+ - The bug fix is available in `fix/<issue number>-xx`
+ - New features are added to `feature/<issue number>-xx`
+ - Refactoring is `refactor/<issue number>-xx`
+ - Document updates are located in `docs/<issue number>-xx`
+ - For other tweaks and configuration settings, see `chore/<issue number>-xx`
