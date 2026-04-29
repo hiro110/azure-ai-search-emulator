@@ -93,3 +93,7 @@ docker compose down
 ```
 
 The Docker image uses a multi-stage build (CGO enabled for SQLite). The runtime image is `debian:bullseye-slim` with a `/healthz` health check.
+
+## development flow
+- Pushing to the `main` branch is prohibited
+- When making changes to the code, be sure to create a branch from the `main` branch, commit the changes, push them, and then create a pull request.
