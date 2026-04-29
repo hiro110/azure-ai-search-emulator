@@ -18,4 +18,8 @@ type SearchResult struct {
 	Total int64 // total matching docs before TOP/SKIP
 }
 
-const defaultTop = 50
+// DefaultTop is the page size used when $top is not specified.
+const DefaultTop = 50
+
+// unexported alias kept for internal use
+const defaultTop = DefaultTop

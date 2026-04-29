@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -80,7 +82,10 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"value": indexes})
+		c.JSON(http.StatusOK, gin.H{
+			"@odata.context": requestBaseURL(c.Request) + "/$metadata#indexes",
+			"value":          indexes,
+		})
 	})
 	// インデックス取得API
 	r.GET("/indexes/:index", func(c *gin.Context) {
@@ -221,7 +226,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			handleSearchError(c, err)
 			return
 		}
-		respondSearch(c, result, params.IncludeCount)
+		respondSearch(c, indexName, params, result)
 	})
 	// ドキュメント検索API (POST)
 	r.POST("/indexes/:index/docs/search", func(c *gin.Context) {
@@ -236,7 +241,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			handleSearchError(c, err)
 			return
 		}
-		respondSearch(c, result, params.IncludeCount)
+		respondSearch(c, indexName, params, result)
 	})
 }
 
@@ -347,10 +352,81 @@ func handleSearchError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
 }
 
-func respondSearch(c *gin.Context, result *application.SearchResult, includeCount bool) {
-	resp := gin.H{"value": result.Value}
-	if includeCount {
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	host := r.Host
+	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+		host = h
+	}
+	return scheme + "://" + host
+}
+
+func buildNextLink(baseURL, indexName string, params application.SearchParams, total int64) string {
+	top := params.Top
+	if top <= 0 {
+		top = application.DefaultTop
+	}
+	nextSkip := params.Skip + top
+	if int64(nextSkip) >= total {
+		return ""
+	}
+	u, _ := url.Parse(baseURL + "/indexes/" + url.PathEscape(indexName) + "/docs")
+	q := url.Values{}
+	if params.Search != "" {
+		q.Set("search", params.Search)
+	}
+	if params.Filter != "" {
+		q.Set("$filter", params.Filter)
+	}
+	if params.OrderBy != "" {
+		q.Set("$orderby", params.OrderBy)
+	}
+	if len(params.Select) > 0 {
+		q.Set("$select", strings.Join(params.Select, ","))
+	}
+	if len(params.SearchFields) > 0 {
+		q.Set("searchFields", strings.Join(params.SearchFields, ","))
+	}
+	if params.Top > 0 {
+		q.Set("$top", strconv.Itoa(params.Top))
+	}
+	q.Set("$skip", strconv.Itoa(nextSkip))
+	if params.IncludeCount {
+		q.Set("$count", "true")
+	}
+	// url.Values.Encode percent-encodes "$" as "%24"; Azure nextLink URLs
+	// conventionally use the literal "$" which is a valid query char.
+	u.RawQuery = strings.ReplaceAll(q.Encode(), "%24", "$")
+	return u.String()
+}
+
+func respondSearch(c *gin.Context, indexName string, params application.SearchParams, result *application.SearchResult) {
+	baseURL := requestBaseURL(c.Request)
+	odataCtx := fmt.Sprintf("%s/indexes('%s')/$metadata#docs(*)", baseURL, indexName)
+
+	docs := make([]map[string]interface{}, len(result.Value))
+	for i, doc := range result.Value {
+		d := make(map[string]interface{}, len(doc)+1)
+		for k, v := range doc {
+			d[k] = v
+		}
+		d["@search.score"] = 1.0
+		docs[i] = d
+	}
+
+	resp := gin.H{
+		"@odata.context":   odataCtx,
+		"@search.coverage": 100.0,
+		"value":            docs,
+	}
+	if params.IncludeCount {
 		resp["@odata.count"] = result.Total
+	}
+	if nextLink := buildNextLink(baseURL, indexName, params, result.Total); nextLink != "" {
+		resp["@odata.nextLink"] = nextLink
 	}
 	c.JSON(http.StatusOK, resp)
 }
