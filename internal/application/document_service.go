@@ -11,8 +11,8 @@ import (
 )
 
 type DocumentService struct {
-	DocRepo   domain.DocumentRepository
-	IdxRepo   domain.IndexRepository
+	DocRepo domain.DocumentRepository
+	IdxRepo domain.IndexRepository
 }
 
 func NewDocumentService(docRepo domain.DocumentRepository, idxRepo domain.IndexRepository) *DocumentService {
@@ -20,7 +20,6 @@ func NewDocumentService(docRepo domain.DocumentRepository, idxRepo domain.IndexR
 }
 
 func (s *DocumentService) AddOrUpdateSingleDoc(ctx context.Context, indexName string, doc map[string]interface{}) error {
-	// インデックス存在チェック
 	exists, err := s.IdxRepo.Exists(indexName)
 	if err != nil {
 		return err
@@ -28,29 +27,9 @@ func (s *DocumentService) AddOrUpdateSingleDoc(ctx context.Context, indexName st
 	if !exists {
 		return domain.ErrIndexNotFound
 	}
-	// キーフィールド名を取得
-	idx, err := s.IdxRepo.FindByName(indexName)
+	keyField, err := s.keyField(indexName)
 	if err != nil {
 		return err
-	}
-	var schema struct {
-		Fields []struct {
-			Name string `json:"name"`
-			Key  bool   `json:"key"`
-		}
-	}
-	if err := json.Unmarshal([]byte(idx.Schema), &schema); err != nil {
-		return fmt.Errorf("schema parse error")
-	}
-	keyField := ""
-	for _, f := range schema.Fields {
-		if f.Key {
-			keyField = f.Name
-			break
-		}
-	}
-	if keyField == "" {
-		return domain.ErrMissingKeyField
 	}
 	keyVal, ok := doc[keyField]
 	if !ok {
@@ -76,28 +55,9 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 	if !exists {
 		return nil, domain.ErrIndexNotFound
 	}
-	idx, err := s.IdxRepo.FindByName(indexName)
+	keyField, err := s.keyField(indexName)
 	if err != nil {
 		return nil, err
-	}
-	var schema struct {
-		Fields []struct {
-			Name string `json:"name"`
-			Key  bool   `json:"key"`
-		}
-	}
-	if err := json.Unmarshal([]byte(idx.Schema), &schema); err != nil {
-		return nil, fmt.Errorf("schema parse error")
-	}
-	keyField := ""
-	for _, f := range schema.Fields {
-		if f.Key {
-			keyField = f.Name
-			break
-		}
-	}
-	if keyField == "" {
-		return nil, domain.ErrMissingKeyField
 	}
 
 	results := make([]map[string]interface{}, 0, len(docs))
@@ -192,7 +152,8 @@ func batchError(key string, statusCode int, message string) map[string]interface
 	return r
 }
 
-func (s *DocumentService) SearchDocuments(ctx context.Context, indexName string, search string) ([]map[string]interface{}, error) {
+// SearchDocuments executes a search using the provided OData parameters.
+func (s *DocumentService) SearchDocuments(ctx context.Context, indexName string, params SearchParams) (*SearchResult, error) {
 	exists, err := s.IdxRepo.Exists(indexName)
 	if err != nil {
 		return nil, err
@@ -200,31 +161,51 @@ func (s *DocumentService) SearchDocuments(ctx context.Context, indexName string,
 	if !exists {
 		return nil, domain.ErrIndexNotFound
 	}
-	docs, err := s.DocRepo.List(indexName)
+
+	opts := domain.SearchOptions{
+		TextSearch:       params.Search,
+		TextSearchFields: params.SearchFields,
+		Top:              params.Top,
+		Skip:             params.Skip,
+	}
+	if opts.Top <= 0 {
+		opts.Top = defaultTop
+	}
+
+	if params.Filter != "" {
+		whereSQL, whereArgs, err := ParseODataFilter(params.Filter)
+		if err != nil {
+			return nil, fmt.Errorf("invalid $filter: %w", err)
+		}
+		opts.WhereSQL = whereSQL
+		opts.WhereArgs = whereArgs
+	}
+
+	if params.OrderBy != "" {
+		orderSQL, err := ParseODataOrderBy(params.OrderBy)
+		if err != nil {
+			return nil, fmt.Errorf("invalid $orderby: %w", err)
+		}
+		opts.OrderSQL = orderSQL
+	}
+
+	docs, total, err := s.DocRepo.Search(indexName, opts)
 	if err != nil {
 		return nil, err
 	}
-	var results []map[string]interface{}
+
+	results := make([]map[string]interface{}, 0, len(docs))
 	for _, doc := range docs {
-		if search == "" || contains(doc.Content, search) {
-			var m map[string]interface{}
-			if err := json.Unmarshal([]byte(doc.Content), &m); err == nil {
-				results = append(results, m)
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(doc.Content), &m); err == nil {
+			if len(params.Select) > 0 {
+				m = selectFields(m, params.Select)
 			}
+			results = append(results, m)
 		}
 	}
-	return results, nil
-}
 
-// Content(JSON文字列)に部分一致するか判定（大文字小文字無視）
-func contains(content string, search string) bool {
-	if search == "" {
-		return true
-	}
-	if search == "*" {
-		return true
-	}
-	return strings.Contains(strings.ToLower(content), strings.ToLower(search))
+	return &SearchResult{Value: results, Total: total}, nil
 }
 
 func (s *DocumentService) GetDocument(ctx context.Context, indexName, key string) (map[string]interface{}, error) {
@@ -255,4 +236,49 @@ func (s *DocumentService) CountDocuments(ctx context.Context, indexName string) 
 		return 0, domain.ErrIndexNotFound
 	}
 	return s.DocRepo.Count(indexName)
+}
+
+// keyField extracts the name of the key field from the index schema.
+func (s *DocumentService) keyField(indexName string) (string, error) {
+	idx, err := s.IdxRepo.FindByName(indexName)
+	if err != nil {
+		return "", err
+	}
+	var schema struct {
+		Fields []struct {
+			Name string `json:"name"`
+			Key  bool   `json:"key"`
+		}
+	}
+	if err := json.Unmarshal([]byte(idx.Schema), &schema); err != nil {
+		return "", fmt.Errorf("schema parse error")
+	}
+	for _, f := range schema.Fields {
+		if f.Key {
+			return f.Name, nil
+		}
+	}
+	return "", domain.ErrMissingKeyField
+}
+
+// selectFields returns a new map containing only the requested fields.
+func selectFields(m map[string]interface{}, fields []string) map[string]interface{} {
+	result := make(map[string]interface{}, len(fields))
+	for _, f := range fields {
+		if v, ok := m[f]; ok {
+			result[f] = v
+		}
+	}
+	return result
+}
+
+// contains reports whether content includes the search term (case-insensitive).
+func contains(content string, search string) bool {
+	if search == "" {
+		return true
+	}
+	if search == "*" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(content), strings.ToLower(search))
 }

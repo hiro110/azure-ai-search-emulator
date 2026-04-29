@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,8 +31,8 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			return
 		}
 		var req struct {
-			Name      string      `json:"name" binding:"required"`
-			Fields    interface{} `json:"fields" binding:"required"`
+			Name       string      `json:"name" binding:"required"`
+			Fields     interface{} `json:"fields" binding:"required"`
 			Suggesters interface{} `json:"suggesters,omitempty"`
 			Analyzers  interface{} `json:"analyzers,omitempty"`
 		}
@@ -78,7 +80,6 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Azure仕様に合わせてvalue配列で返却
 		c.JSON(http.StatusOK, gin.H{"value": indexes})
 	})
 	// インデックス取得API
@@ -211,41 +212,147 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		c.String(http.StatusOK, "%d", count)
 	})
-	// ドキュメント検索API
+	// ドキュメント検索API (GET)
 	r.GET("/indexes/:index/docs", func(c *gin.Context) {
 		indexName := c.Param("index")
-		search := c.Query("search")
-		results, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, search)
+		params := parseSearchParamsFromQuery(c)
+		result, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, params)
 		if err != nil {
-			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			}
+			handleSearchError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"value": results})
+		respondSearch(c, result, params.IncludeCount)
 	})
+	// ドキュメント検索API (POST)
 	r.POST("/indexes/:index/docs/search", func(c *gin.Context) {
 		indexName := c.Param("index")
-		var req struct {
-			Search string `json:"search"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
+		params, err := parseSearchParamsFromBody(c)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 			return
 		}
-		results, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, req.Search)
+		result, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, params)
 		if err != nil {
-			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			}
+			handleSearchError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"value": results})
+		respondSearch(c, result, params.IncludeCount)
 	})
+}
+
+// parseSearchParamsFromQuery reads OData parameters from GET query string.
+func parseSearchParamsFromQuery(c *gin.Context) application.SearchParams {
+	top, _ := strconv.Atoi(c.Query("$top"))
+	skip, _ := strconv.Atoi(c.Query("$skip"))
+	count := strings.EqualFold(c.Query("$count"), "true")
+
+	var selectFields []string
+	if s := c.Query("$select"); s != "" {
+		for _, f := range strings.Split(s, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				selectFields = append(selectFields, f)
+			}
+		}
+	}
+
+	var searchFields []string
+	if s := c.Query("searchFields"); s != "" {
+		for _, f := range strings.Split(s, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				searchFields = append(searchFields, f)
+			}
+		}
+	}
+
+	return application.SearchParams{
+		Search:       c.Query("search"),
+		Filter:       c.Query("$filter"),
+		OrderBy:      c.Query("$orderby"),
+		Select:       selectFields,
+		SearchFields: searchFields,
+		Top:          top,
+		Skip:         skip,
+		IncludeCount: count,
+	}
+}
+
+// searchBody mirrors the Azure AI Search POST /docs/search request body.
+type searchBody struct {
+	Search       string `json:"search"`
+	Filter       string `json:"$filter"`
+	OrderBy      string `json:"$orderby"`
+	Select       string `json:"$select"`
+	SearchFields string `json:"searchFields"`
+	Top          *int   `json:"$top"`
+	Skip         *int   `json:"$skip"`
+	Count        bool   `json:"$count"`
+}
+
+// parseSearchParamsFromBody reads OData parameters from a POST JSON body.
+func parseSearchParamsFromBody(c *gin.Context) (application.SearchParams, error) {
+	var b searchBody
+	if err := c.ShouldBindJSON(&b); err != nil {
+		return application.SearchParams{}, err
+	}
+
+	top := 0
+	if b.Top != nil {
+		top = *b.Top
+	}
+	skip := 0
+	if b.Skip != nil {
+		skip = *b.Skip
+	}
+
+	var selectFields []string
+	if b.Select != "" {
+		for _, f := range strings.Split(b.Select, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				selectFields = append(selectFields, f)
+			}
+		}
+	}
+
+	var searchFields []string
+	if b.SearchFields != "" {
+		for _, f := range strings.Split(b.SearchFields, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				searchFields = append(searchFields, f)
+			}
+		}
+	}
+
+	return application.SearchParams{
+		Search:       b.Search,
+		Filter:       b.Filter,
+		OrderBy:      b.OrderBy,
+		Select:       selectFields,
+		SearchFields: searchFields,
+		Top:          top,
+		Skip:         skip,
+		IncludeCount: b.Count,
+	}, nil
+}
+
+func handleSearchError(c *gin.Context, err error) {
+	if errors.Is(err, domain.ErrIndexNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+		return
+	}
+	msg := err.Error()
+	if strings.HasPrefix(msg, "invalid $filter") || strings.HasPrefix(msg, "invalid $orderby") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+}
+
+func respondSearch(c *gin.Context, result *application.SearchResult, includeCount bool) {
+	resp := gin.H{"value": result.Value}
+	if includeCount {
+		resp["@odata.count"] = result.Total
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func ApiKeyAuthMiddleware() gin.HandlerFunc {
@@ -255,13 +362,13 @@ func ApiKeyAuthMiddleware() gin.HandlerFunc {
 	}
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader("api-key")
-        if apiKey == "" {
-            apiKey = c.GetHeader("Api-Key")
-        }
-        if apiKeyEnv == "" || apiKey != apiKeyEnv {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required or invalid"})
-            return
-        }
-        c.Next()
+		if apiKey == "" {
+			apiKey = c.GetHeader("Api-Key")
+		}
+		if apiKeyEnv == "" || apiKey != apiKeyEnv {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required or invalid"})
+			return
+		}
+		c.Next()
 	}
 }
