@@ -116,6 +116,7 @@ type mockDocumentRepository struct {
 	deleteErr error
 	listErr   error
 	countErr  error
+	searchErr error
 }
 
 func newMockDocumentRepository() *mockDocumentRepository {
@@ -198,4 +199,45 @@ func (m *mockDocumentRepository) Count(indexName string) (int, error) {
 		return len(docs), nil
 	}
 	return 0, nil
+}
+
+// Search implements domain.DocumentRepository for unit tests.
+// It applies in-memory text search and pagination; WhereSQL/OrderSQL are ignored
+// (SQL-level filter behavior is tested via the SQLite repository integration tests).
+func (m *mockDocumentRepository) Search(indexName string, opts domain.SearchOptions) ([]*domain.Document, int64, error) {
+	if m.searchErr != nil {
+		return nil, 0, m.searchErr
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var all []*domain.Document
+	if docs, ok := m.store[indexName]; ok {
+		for _, doc := range docs {
+			if contains(doc.Content, opts.TextSearch) {
+				all = append(all, &domain.Document{
+					IndexName: doc.IndexName,
+					Key:       doc.Key,
+					Content:   doc.Content,
+				})
+			}
+		}
+	}
+
+	total := int64(len(all))
+
+	if opts.Skip > 0 {
+		if opts.Skip >= len(all) {
+			return []*domain.Document{}, total, nil
+		}
+		all = all[opts.Skip:]
+	}
+	top := opts.Top
+	if top <= 0 {
+		top = 50
+	}
+	if top < len(all) {
+		all = all[:top]
+	}
+	return all, total, nil
 }

@@ -80,7 +80,6 @@ func TestDocumentService_AddOrUpdateSingleDoc_NonStringKey(t *testing.T) {
 func TestDocumentService_AddOrUpdateSingleDoc_NoKeyInSchema(t *testing.T) {
 	t.Parallel()
 	svc, idxRepo, _ := newDocumentServiceForTest()
-	// Schema with no key=true field.
 	_ = idxRepo.Create(&domain.Index{
 		Name:   "no-key",
 		Schema: `{"fields":[{"name":"id","key":false}]}`,
@@ -367,6 +366,15 @@ func TestDocumentService_BatchOperation_BadSchema(t *testing.T) {
 
 // --- SearchDocuments ---
 
+func searchAll(t *testing.T, svc *DocumentService, indexName string) *SearchResult {
+	t.Helper()
+	res, err := svc.SearchDocuments(context.Background(), indexName, SearchParams{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return res
+}
+
 func TestDocumentService_SearchDocuments_NoFilter(t *testing.T) {
 	t.Parallel()
 	svc, idxRepo, docRepo := newDocumentServiceForTest()
@@ -374,12 +382,12 @@ func TestDocumentService_SearchDocuments_NoFilter(t *testing.T) {
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1","title":"alpha"}`})
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "2", Content: `{"id":"2","title":"beta"}`})
 
-	results, err := svc.SearchDocuments(context.Background(), "idx", "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	res := searchAll(t, svc, "idx")
+	if len(res.Value) != 2 {
+		t.Errorf("expected 2 results, got %d", len(res.Value))
 	}
-	if len(results) != 2 {
-		t.Errorf("expected 2 results, got %d", len(results))
+	if res.Total != 2 {
+		t.Errorf("total = %d, want 2", res.Total)
 	}
 }
 
@@ -389,12 +397,12 @@ func TestDocumentService_SearchDocuments_Wildcard(t *testing.T) {
 	seedIndex(t, idxRepo, "idx")
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1"}`})
 
-	results, err := svc.SearchDocuments(context.Background(), "idx", "*")
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Search: "*"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 1 {
-		t.Errorf("expected 1 result, got %d", len(results))
+	if len(res.Value) != 1 {
+		t.Errorf("expected 1 result, got %d", len(res.Value))
 	}
 }
 
@@ -405,15 +413,15 @@ func TestDocumentService_SearchDocuments_CaseInsensitive(t *testing.T) {
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1","title":"Alpha"}`})
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "2", Content: `{"id":"2","title":"Beta"}`})
 
-	results, err := svc.SearchDocuments(context.Background(), "idx", "ALPHA")
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Search: "ALPHA"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 1 {
-		t.Errorf("expected 1 result, got %d", len(results))
+	if len(res.Value) != 1 {
+		t.Errorf("expected 1 result, got %d", len(res.Value))
 	}
-	if results[0]["title"] != "Alpha" {
-		t.Errorf("expected title=Alpha, got %v", results[0]["title"])
+	if res.Value[0]["title"] != "Alpha" {
+		t.Errorf("expected title=Alpha, got %v", res.Value[0]["title"])
 	}
 }
 
@@ -423,19 +431,19 @@ func TestDocumentService_SearchDocuments_NoMatch(t *testing.T) {
 	seedIndex(t, idxRepo, "idx")
 	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1","title":"alpha"}`})
 
-	results, err := svc.SearchDocuments(context.Background(), "idx", "zzz")
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Search: "zzz"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 0 {
-		t.Errorf("expected 0 results, got %d", len(results))
+	if len(res.Value) != 0 {
+		t.Errorf("expected 0 results, got %d", len(res.Value))
 	}
 }
 
 func TestDocumentService_SearchDocuments_IndexNotFound(t *testing.T) {
 	t.Parallel()
 	svc, _, _ := newDocumentServiceForTest()
-	_, err := svc.SearchDocuments(context.Background(), "missing", "x")
+	_, err := svc.SearchDocuments(context.Background(), "missing", SearchParams{Search: "x"})
 	if err == nil || err.Error() != "index not found" {
 		t.Fatalf("expected 'index not found', got %v", err)
 	}
@@ -445,17 +453,82 @@ func TestDocumentService_SearchDocuments_SkipsBadJSON(t *testing.T) {
 	t.Parallel()
 	svc, idxRepo, docRepo := newDocumentServiceForTest()
 	seedIndex(t, idxRepo, "idx")
-	// Insert raw broken JSON via the mock store directly.
 	docRepo.store["idx"] = map[string]*domain.Document{
 		"bad":  {IndexName: "idx", Key: "bad", Content: "not-json"},
 		"good": {IndexName: "idx", Key: "good", Content: `{"id":"good"}`},
 	}
-	results, err := svc.SearchDocuments(context.Background(), "idx", "")
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 1 {
-		t.Errorf("expected 1 valid result (bad JSON skipped), got %d", len(results))
+	if len(res.Value) != 1 {
+		t.Errorf("expected 1 valid result (bad JSON skipped), got %d", len(res.Value))
+	}
+}
+
+func TestDocumentService_SearchDocuments_Select(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, docRepo := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1","title":"T","notes":"N"}`})
+
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Select: []string{"id", "title"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Value) != 1 {
+		t.Fatalf("expected 1 result")
+	}
+	if _, ok := res.Value[0]["notes"]; ok {
+		t.Errorf("notes should be excluded by $select")
+	}
+	if res.Value[0]["title"] != "T" {
+		t.Errorf("title should be included, got %v", res.Value[0])
+	}
+}
+
+func TestDocumentService_SearchDocuments_TopSkip(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, docRepo := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+	for i := 1; i <= 5; i++ {
+		_ = docRepo.Upsert(&domain.Document{
+			IndexName: "idx", Key: strings.Repeat("x", i),
+			Content: `{"id":"x"}`,
+		})
+	}
+
+	res, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Top: 2, Skip: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Total != 5 {
+		t.Errorf("total = %d, want 5", res.Total)
+	}
+	if len(res.Value) != 2 {
+		t.Errorf("len(value) = %d, want 2", len(res.Value))
+	}
+}
+
+func TestDocumentService_SearchDocuments_InvalidFilter(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, _ := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+
+	_, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{Filter: "Field xyz 'v'"})
+	if err == nil || !strings.Contains(err.Error(), "$filter") {
+		t.Fatalf("expected $filter error, got %v", err)
+	}
+}
+
+func TestDocumentService_SearchDocuments_InvalidOrderBy(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, _ := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+
+	_, err := svc.SearchDocuments(context.Background(), "idx", SearchParams{OrderBy: "Rating sideways"})
+	if err == nil || !strings.Contains(err.Error(), "$orderby") {
+		t.Fatalf("expected $orderby error, got %v", err)
 	}
 }
 
