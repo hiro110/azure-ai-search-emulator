@@ -4,6 +4,7 @@ import (
 	"ai-search-emulator/internal/domain"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -120,14 +121,18 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 
 		switch action {
 		case "upload":
+			_, findErr := s.DocRepo.Find(indexName, keyStr)
+			isNew := errors.Is(findErr, domain.ErrDocumentNotFound)
 			if err := s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(docJSON)}); err != nil {
 				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
-			} else {
+			} else if isNew {
 				results = append(results, batchSuccess(keyStr, http.StatusCreated))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
 			}
 		case "mergeOrUpload":
 			_, findErr := s.DocRepo.Find(indexName, keyStr)
-			isNew := findErr != nil
+			isNew := errors.Is(findErr, domain.ErrDocumentNotFound)
 			if err := s.DocRepo.Upsert(&domain.Document{IndexName: indexName, Key: keyStr, Content: string(docJSON)}); err != nil {
 				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
 			} else if isNew {
@@ -155,8 +160,11 @@ func (s *DocumentService) BatchOperation(ctx context.Context, indexName string, 
 				results = append(results, batchSuccess(keyStr, http.StatusOK))
 			}
 		case "delete":
-			_ = s.DocRepo.Delete(indexName, keyStr)
-			results = append(results, batchSuccess(keyStr, http.StatusOK))
+			if err := s.DocRepo.Delete(indexName, keyStr); err != nil {
+				results = append(results, batchError(keyStr, http.StatusInternalServerError, err.Error()))
+			} else {
+				results = append(results, batchSuccess(keyStr, http.StatusOK))
+			}
 		default:
 			results = append(results, batchError(keyStr, http.StatusBadRequest, "Unknown action: "+action))
 		}

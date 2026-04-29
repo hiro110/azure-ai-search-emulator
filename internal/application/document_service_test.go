@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -294,6 +295,39 @@ func TestDocumentService_BatchOperation_UnknownAction(t *testing.T) {
 	}
 	if results[0]["errorMessage"] != "Unknown action: frobnicate" {
 		t.Errorf("expected unknown action error, got %v", results[0])
+	}
+}
+
+func TestDocumentService_BatchOperation_Upload_NewDoc_Returns201(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, _ := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+
+	results, err := svc.BatchOperation(context.Background(), "idx", []map[string]interface{}{
+		{"@search.action": "upload", "id": "new", "title": "x"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0]["statusCode"] != http.StatusCreated {
+		t.Errorf("new upload: want statusCode=201, got %v", results[0]["statusCode"])
+	}
+}
+
+func TestDocumentService_BatchOperation_Upload_ExistingDoc_Returns200(t *testing.T) {
+	t.Parallel()
+	svc, idxRepo, docRepo := newDocumentServiceForTest()
+	seedIndex(t, idxRepo, "idx")
+	_ = docRepo.Upsert(&domain.Document{IndexName: "idx", Key: "1", Content: `{"id":"1","title":"old"}`})
+
+	results, err := svc.BatchOperation(context.Background(), "idx", []map[string]interface{}{
+		{"@search.action": "upload", "id": "1", "title": "updated"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0]["statusCode"] != http.StatusOK {
+		t.Errorf("overwrite upload: want statusCode=200, got %v", results[0]["statusCode"])
 	}
 }
 
