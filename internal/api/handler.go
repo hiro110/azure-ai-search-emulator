@@ -29,7 +29,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 	r.POST("/indexes", func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			err400(c, "Failed to read request body")
 			return
 		}
 		var req struct {
@@ -39,15 +39,15 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			Analyzers  interface{} `json:"analyzers,omitempty"`
 		}
 		if err := json.Unmarshal(body, &req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			err400(c, "Invalid request body")
 			return
 		}
 		err = app.IndexService.CreateIndex(c.Request.Context(), req.Name, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexAlreadyExists) {
-				c.JSON(http.StatusConflict, gin.H{"error": "Index already exists"})
+				err409(c, "Index already exists")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -58,17 +58,17 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		var doc map[string]interface{}
 		if err := c.ShouldBindJSON(&doc); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document body"})
+			err400(c, "Invalid document body")
 			return
 		}
 		err := app.DocumentService.AddOrUpdateSingleDoc(c.Request.Context(), indexName, doc)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else if errors.Is(err, domain.ErrMissingKeyField) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Document missing key field"})
+				err400Missing(c, "Document missing key field")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -79,7 +79,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		selectFields := c.Query("$select")
 		indexes, err := app.IndexService.ListIndexes(c.Request.Context(), selectFields)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			err500(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -93,9 +93,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		idx, err := app.IndexService.GetIndex(c.Request.Context(), indexName)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -106,7 +106,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			err400(c, "Failed to read request body")
 			return
 		}
 		var req struct {
@@ -116,12 +116,12 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			Analyzers  interface{} `json:"analyzers,omitempty"`
 		}
 		if err := json.Unmarshal(body, &req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			err400(c, "Invalid request body")
 			return
 		}
 		created, err := app.IndexService.CreateOrUpdateIndex(c.Request.Context(), indexName, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			err500(c, err)
 			return
 		}
 		if created {
@@ -136,9 +136,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		err := app.IndexService.DeleteIndex(c.Request.Context(), indexName)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -150,9 +150,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		stats, err := app.IndexService.GetIndexStats(c.Request.Context(), indexName)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -165,15 +165,15 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			Value []map[string]interface{} `json:"value" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid batch request body"})
+			err400(c, "Invalid batch request body")
 			return
 		}
 		results, err := app.DocumentService.BatchOperation(c.Request.Context(), indexName, req.Value)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -193,11 +193,11 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		doc, err := app.DocumentService.GetDocument(c.Request.Context(), indexName, key)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else if errors.Is(err, domain.ErrDocumentNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
+				err404(c, "Document not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -209,9 +209,9 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		count, err := app.DocumentService.CountDocuments(c.Request.Context(), indexName)
 		if err != nil {
 			if errors.Is(err, domain.ErrIndexNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+				err404(c, "Index not found")
 			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				err500(c, err)
 			}
 			return
 		}
@@ -233,7 +233,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		indexName := c.Param("index")
 		params, err := parseSearchParamsFromBody(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			err400(c, "Invalid request body")
 			return
 		}
 		result, err := app.DocumentService.SearchDocuments(c.Request.Context(), indexName, params)
@@ -341,15 +341,15 @@ func parseSearchParamsFromBody(c *gin.Context) (application.SearchParams, error)
 
 func handleSearchError(c *gin.Context, err error) {
 	if errors.Is(err, domain.ErrIndexNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Index not found"})
+		err404(c, "Index not found")
 		return
 	}
 	msg := err.Error()
 	if strings.HasPrefix(msg, "invalid $filter") || strings.HasPrefix(msg, "invalid $orderby") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		err400(c, msg)
 		return
 	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+	err500(c, err)
 }
 
 func requestBaseURL(r *http.Request) string {
@@ -442,7 +442,7 @@ func ApiKeyAuthMiddleware() gin.HandlerFunc {
 			apiKey = c.GetHeader("Api-Key")
 		}
 		if apiKeyEnv == "" || apiKey != apiKeyEnv {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "API key required or invalid"})
+			err401(c, "API key required or invalid")
 			return
 		}
 		c.Next()

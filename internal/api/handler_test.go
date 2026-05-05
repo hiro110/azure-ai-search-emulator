@@ -842,6 +842,129 @@ func TestSearchDocuments_GET_NoNextLinkOnLastPage(t *testing.T) {
 	}
 }
 
+// --- Structured error responses ---
+
+// errCode extracts the "code" field from an Azure-structured error body.
+func errCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to unmarshal error body: %v, raw=%s", err, rec.Body.String())
+	}
+	if body.Error.Code == "" {
+		t.Fatalf("error.code is empty, body=%s", rec.Body.String())
+	}
+	return body.Error.Code
+}
+
+func TestErrorFormat_400_InvalidRequest(t *testing.T) {
+	r := setupRouter(t)
+	rec := doRequest(t, r, http.MethodPost, "/indexes", "not-json")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if code := errCode(t, rec); code != "InvalidRequest" {
+		t.Errorf("error.code = %q, want InvalidRequest", code)
+	}
+}
+
+func TestErrorFormat_400_MissingRequiredProperty(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	rec := doRequest(t, r, http.MethodPost, "/indexes/movies/docs", `{"title":"no key"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if code := errCode(t, rec); code != "MissingRequiredProperty" {
+		t.Errorf("error.code = %q, want MissingRequiredProperty", code)
+	}
+}
+
+func TestErrorFormat_401_AuthenticationFailed(t *testing.T) {
+	r := setupRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/indexes", nil)
+	req.Header.Set("api-key", "wrong")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	if code := errCode(t, rec); code != "AuthenticationFailed" {
+		t.Errorf("error.code = %q, want AuthenticationFailed", code)
+	}
+}
+
+func TestErrorFormat_404_ResourceNotFound(t *testing.T) {
+	r := setupRouter(t)
+	rec := doRequest(t, r, http.MethodGet, "/indexes/missing", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	if code := errCode(t, rec); code != "ResourceNotFound" {
+		t.Errorf("error.code = %q, want ResourceNotFound", code)
+	}
+}
+
+func TestErrorFormat_409_ResourceAlreadyExists(t *testing.T) {
+	r := setupRouter(t)
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	rec := doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rec.Code)
+	}
+	if code := errCode(t, rec); code != "ResourceAlreadyExists" {
+		t.Errorf("error.code = %q, want ResourceAlreadyExists", code)
+	}
+}
+
+func TestErrorFormat_500_InternalServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("API_KEY", apiTestKey)
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(apiTestSchemaSQL); err != nil {
+		_ = db.Close()
+		t.Fatalf("create schema: %v", err)
+	}
+
+	idxRepo := infrastructure.NewSQLiteIndexRepository(db)
+	docRepo := infrastructure.NewSQLiteDocumentRepository(db)
+	apps := &application.AppServices{
+		IndexService:    application.NewIndexService(idxRepo, docRepo),
+		DocumentService: application.NewDocumentService(docRepo, idxRepo),
+	}
+	r := gin.New()
+	RegisterHealthCheck(r)
+	r.Use(ApiKeyAuthMiddleware())
+	RegisterRoutes(r, apps)
+
+	// Create an index while the DB is healthy, then close it to force errors.
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	_ = db.Close()
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if code := errCode(t, rec); code != "InternalServerError" {
+		t.Errorf("error.code = %q, want InternalServerError", code)
+	}
+	// Generic message must not contain internal details.
+	body := rec.Body.String()
+	if strings.Contains(body, "sql") || strings.Contains(body, "sqlite") {
+		t.Errorf("response body leaked internal details: %s", body)
+	}
+}
+
 // Guard: ensure no DB file is left in cwd after running these tests.
 // This is a best-effort assertion — file presence is checked only if it
 // somehow gets created in the working directory.
