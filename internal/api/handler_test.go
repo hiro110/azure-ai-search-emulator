@@ -922,6 +922,49 @@ func TestErrorFormat_409_ResourceAlreadyExists(t *testing.T) {
 	}
 }
 
+func TestErrorFormat_500_InternalServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("API_KEY", apiTestKey)
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(apiTestSchemaSQL); err != nil {
+		_ = db.Close()
+		t.Fatalf("create schema: %v", err)
+	}
+
+	idxRepo := infrastructure.NewSQLiteIndexRepository(db)
+	docRepo := infrastructure.NewSQLiteDocumentRepository(db)
+	apps := &application.AppServices{
+		IndexService:    application.NewIndexService(idxRepo, docRepo),
+		DocumentService: application.NewDocumentService(docRepo, idxRepo),
+	}
+	r := gin.New()
+	RegisterHealthCheck(r)
+	r.Use(ApiKeyAuthMiddleware())
+	RegisterRoutes(r, apps)
+
+	// Create an index while the DB is healthy, then close it to force errors.
+	doRequest(t, r, http.MethodPost, "/indexes", apiTestSchema)
+	_ = db.Close()
+
+	rec := doRequest(t, r, http.MethodGet, "/indexes", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if code := errCode(t, rec); code != "InternalServerError" {
+		t.Errorf("error.code = %q, want InternalServerError", code)
+	}
+	// Generic message must not contain internal details.
+	body := rec.Body.String()
+	if strings.Contains(body, "sql") || strings.Contains(body, "sqlite") {
+		t.Errorf("response body leaked internal details: %s", body)
+	}
+}
+
 // Guard: ensure no DB file is left in cwd after running these tests.
 // This is a best-effort assertion — file presence is checked only if it
 // somehow gets created in the working directory.

@@ -47,7 +47,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexAlreadyExists) {
 				err409(c, "Index already exists")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -68,7 +68,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			} else if errors.Is(err, domain.ErrMissingKeyField) {
 				err400Missing(c, "Document missing key field")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -79,7 +79,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		selectFields := c.Query("$select")
 		indexes, err := app.IndexService.ListIndexes(c.Request.Context(), selectFields)
 		if err != nil {
-			err500(c, err.Error())
+			err500(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -95,7 +95,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexNotFound) {
 				err404(c, "Index not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -121,7 +121,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 		}
 		created, err := app.IndexService.CreateOrUpdateIndex(c.Request.Context(), indexName, io.NopCloser(bytes.NewReader(body)))
 		if err != nil {
-			err500(c, err.Error())
+			err500(c, err)
 			return
 		}
 		if created {
@@ -138,7 +138,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexNotFound) {
 				err404(c, "Index not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -152,7 +152,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexNotFound) {
 				err404(c, "Index not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -173,7 +173,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexNotFound) {
 				err404(c, "Index not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -197,7 +197,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			} else if errors.Is(err, domain.ErrDocumentNotFound) {
 				err404(c, "Document not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -211,7 +211,7 @@ func RegisterRoutes(r *gin.Engine, app *application.AppServices) {
 			if errors.Is(err, domain.ErrIndexNotFound) {
 				err404(c, "Index not found")
 			} else {
-				err500(c, err.Error())
+				err500(c, err)
 			}
 			return
 		}
@@ -349,7 +349,7 @@ func handleSearchError(c *gin.Context, err error) {
 		err400(c, msg)
 		return
 	}
-	err500(c, msg)
+	err500(c, err)
 }
 
 func requestBaseURL(r *http.Request) string {

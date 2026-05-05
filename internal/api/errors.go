@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,10 @@ func err409(c *gin.Context, message string) {
 	jsonErr(c, http.StatusConflict, "ResourceAlreadyExists", message)
 }
 
-func err500(c *gin.Context, message string) {
-	jsonErr(c, http.StatusInternalServerError, "InternalServerError", message)
+// err500 logs the internal error server-side and returns a generic message to
+// the client so that internal details (DB errors, stack traces, etc.) are
+// never exposed in the response body.
+func err500(c *gin.Context, err error) {
+	log.Printf("[ERROR] internal server error: %v", err)
+	jsonErr(c, http.StatusInternalServerError, "InternalServerError", "An internal server error occurred.")
 }
